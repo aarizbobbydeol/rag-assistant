@@ -191,6 +191,38 @@ question and ranked first or second almost always. Per-tag recall@5 is 1.000 for
 single-hop, security, API and handbook questions, 0.958–0.974 for multi-hop and
 PDF-sourced ones.
 
+### With a real model behind it
+
+The same harness, same corpus, same retrieval — only the answerer swapped, from
+the offline extractive one to `openai/gpt-oss-120b` over Groq's
+OpenAI-compatible endpoint:
+
+| | extractive | gpt-oss-120b |
+|---|---|---|
+| citation precision | 0.802 | **0.925** |
+| citation recall | 0.859 | **0.937** |
+| token F1 | 0.441 | **0.503** |
+| ROUGE-L | 0.390 | **0.460** |
+| groundedness | 1.000 | 0.977 |
+| false-answer rate | 0.000 | **0.000** |
+| over-refusal rate | 0.034 | **0.034** |
+
+Both safety numbers hold. The three anchor detectors run before generation and
+read only the question and the retrieved text, so no answerer can move them; the
+money-slot rule does read generated prose, and a paraphrasing model did not
+break it.
+
+The groundedness dip is the interesting one, and it is not a regression. The
+extractive backend scores a perfect 1.000 by copying source sentences verbatim —
+trivially grounded, because it is not writing anything. A model that paraphrases
+shares less vocabulary with the passage while answering it better on every
+quality metric. A 1.000 there measures a degenerate answerer, not a good one.
+
+One detail worth recording: citation precision is 0.925 *because* a parsing bug
+was fixed first. This model cites with `【1】` rather than `[1]`, and the marker
+regex was ASCII-only, so every citation parsed as no citation and the answers
+scored as ungrounded. Bracket variants are now folded before parsing.
+
 ### The refusal number, and how it got there
 
 `false_answer_rate` started at **0.500** — four of the eight unanswerable
@@ -229,7 +261,7 @@ passage we are about to answer from?"* Three detectors, no LLM call
 Plus one post-generation rule: a question asking a price whose answer contains
 no money is refused, which is what the Enterprise-tier answer was.
 
-Ablated at three retrieval depths, the guard costs nothing:
+Ablated at three retrieval depths on the golden set, the guard costs nothing:
 
 | top_k | false-answer rate | over-refusal rate |
 |---|---|---|
@@ -237,9 +269,50 @@ Ablated at three retrieval depths, the guard costs nothing:
 | 5 | 0.500 → **0.000** | 0.034 → 0.034 |
 | 8 | 0.500 → **0.000** | 0.034 → 0.034 |
 
-Not one additional answerable question is refused, at any depth. Each detector
-fires on well under 5% of questions by design: high precision, deliberately low
-recall, so the union refuses far more rarely than any single threshold could.
+### The number above is a fit, and here is the honest one
+
+Those eight must-abstain questions are the ones the guard was *built* against,
+so 0.000 measures nothing except that the fix works on its own examples. Eight
+examples also cannot measure over-refusal at all — the interesting failure is
+refusing a question the corpus answers, and none of the eight can show it.
+
+So the guard was re-measured on **60 held-out questions** written afterwards
+against the same corpus ([`data/golden/holdout.jsonl`](data/golden/holdout.jsonl)),
+by five authors — two of them deliberately not told how the guard works — with
+every answerable/unanswerable label independently re-verified against the source
+text. Thirty of each.
+
+| | guard off | guard on |
+|---|---|---|
+| false-answer rate | 0.767 | **0.567** |
+| over-refusal rate | 0.200 | **0.233** |
+
+The guard catches six unanswerable questions the baseline answers, at a cost of
+one answerable question refused. That is a real improvement and a much weaker
+one than the golden set implies.
+
+The first held-out run was worse still — 0.500 false answers but over-refusal up
+to 0.367, five newly refused answerable questions — and it exposed three defects
+worth naming, because each is a different way a lexical guard goes wrong:
+
+- **`orphan_span` fired on ordinary verb phrases** — "keep working", "take
+  effect", "still acceptable" — rather than missing attribute values. Document
+  frequency cannot separate those from the real catch: "keep" and "still" have
+  df=1 in this corpus while "annual" and "maximum" have df=3, so a rarity
+  threshold deletes the true positive and keeps every false one. The distinction
+  is grammatical, so the span now has to contain an attribute word.
+- **`money_slot` refused "included at no employee premium"** — a complete answer
+  to a price question that contains no money token. Recognising explicit cost
+  negation fixes it, but bare "free" cannot be the cue: "the Free tier" is a
+  product name, and using it re-broke the Enterprise-cost catch.
+- **Identifier families missed spaced versions** — a document writing
+  "Version 2.8" did not attest the "v2.8" a reader asks about.
+
+Each detector fires on well under 5% of questions by design: high precision,
+deliberately low recall, so the union refuses far more rarely than any single
+threshold could. Of the questions still missed, several need arithmetic the
+documents never perform — "requests per day" when the corpus states a per-minute
+limit — which no lexical guard will ever catch.
 
 ### Ablation: what actually moved the numbers
 
@@ -357,10 +430,11 @@ framework hides behind a chain object, and exactly the parts worth showing. Each
 is ~100 lines of readable code with its own tests, and swapping in LangChain or
 LlamaIndex at the `RagIndex` boundary would be mechanical.
 
-**Why an offline default?** A portfolio project that needs someone else's API key
-to demonstrate anything mostly demonstrates that it cannot be verified. The
-hashing embedder and extractive answerer make every number in this README
-reproducible on a laptop with no network.
+**Why an offline default?** A project that needs someone else's API key to
+demonstrate anything mostly demonstrates that it cannot be verified. The hashing
+embedder and extractive answerer make every number in this README reproducible
+on a laptop with no network — with one exception, the `gpt-oss-120b` column,
+which needs a key and is labelled as such.
 
 **Why lexical evidence outweighs embeddings in the grounding check?** A
 paraphrase can score high on cosine similarity while asserting a fact the source
