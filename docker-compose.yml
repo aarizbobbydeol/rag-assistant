@@ -1,0 +1,75 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rag-assistant:latest
+    ports:
+      - "8000:8000"
+    environment:
+      RAG_LOG_LEVEL: INFO
+      RAG_LOG_JSON: "true"
+      RAG_AUTH_REQUIRED: "${RAG_AUTH_REQUIRED:-true}"
+      RAG_AUTH_SECRET: "${RAG_AUTH_SECRET:?set RAG_AUTH_SECRET in .env before starting}"
+      # Leave RAG_LLM_API_KEY empty to run fully offline on the extractive backend.
+      RAG_LLM_API_KEY: "${RAG_LLM_API_KEY:-}"
+      RAG_LLM_MODEL: "${RAG_LLM_MODEL:-gpt-4o-mini}"
+      RAG_LLM_BASE_URL: "${RAG_LLM_BASE_URL:-https://api.openai.com/v1}"
+      RAG_VECTOR_STORE: "${RAG_VECTOR_STORE:-auto}"
+      RAG_PG_DSN: postgresql://rag:rag@postgres:5432/rag
+      RAG_QDRANT_URL: http://qdrant:6333
+    volumes:
+      - rag-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  # Only needed when RAG_VECTOR_STORE=pgvector.
+  postgres:
+    image: pgvector/pgvector:pg16
+    profiles: ["pgvector"]
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+      POSTGRES_DB: rag
+    ports:
+      # Overridable: a host PostgreSQL install also binds 5432 and would win the
+      # bind, leaving connections pointed at the wrong server.
+      - "${RAG_PG_PORT:-5432}:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./scripts/init-pgvector.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d rag"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Only needed when RAG_VECTOR_STORE=qdrant.
+  qdrant:
+    image: qdrant/qdrant:latest
+    profiles: ["qdrant"]
+    ports:
+      - "${RAG_QDRANT_PORT:-6333}:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ["monitoring"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api
+
+volumes:
+  rag-data:
+  pg-data:
+  qdrant-data:

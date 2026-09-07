@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-assistant"
+version = "1.0.0"
+description = "Retrieval-augmented knowledge assistant with citations, hybrid search, reranking and an offline evaluation harness."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    "numpy>=1.26",
+    "pypdf>=4.2",
+    "prometheus-client>=0.20",
+    "tenacity>=8.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2", "pytest-asyncio>=0.23", "ruff>=0.5"]
+faiss = ["faiss-cpu>=1.8"]
+local-models = ["sentence-transformers>=3.0"]
+openai = ["openai>=1.30", "tiktoken>=0.7"]
+pgvector = ["psycopg[binary]>=3.1", "pgvector>=0.2.5"]
+qdrant = ["qdrant-client>=1.9"]
+
+[tool.setuptools.packages.find]
+include = ["app*", "eval*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+ignore = [
+    "E501",    # long lines are the formatter's business, not the linter's
+    "UP042",   # `str, Enum` is deliberate: StrEnum changes dict-key semantics
+               # and `SPLITTERS[SplitterName.RECURSIVE]` depends on the current
+               # behaviour (see app/ingestion/chunking.py).
+    "C405",    # a `frozenset("""...""".split())` block is more readable than a
+    "SIM905",  # 140-element list literal on one line.
+]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's dependency markers are function calls in defaults by design.
+"app/api/*.py" = ["B008"]

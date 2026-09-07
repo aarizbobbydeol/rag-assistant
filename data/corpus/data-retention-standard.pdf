@@ -1,0 +1,461 @@
+%PDF-1.3
+%‚„œ”
+1 0 obj
+<<
+/Producer (make\137sample\137corpus\056py)
+/Title (Northwind Cartography Data Retention Standard)
+/Author (Northwind Cartography Records Management)
+/Subject (Retention periods\054 deletion schedule and verification)
+/CreationDate (D\07220250301000000Z)
+/ModDate (D\07220250301000000Z)
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Count 4
+/Kids [ 5 0 R 7 0 R 9 0 R 11 0 R ]
+>>
+endobj
+3 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+4 0 obj
+<<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+/Encoding /WinAnsiEncoding
+>>
+endobj
+5 0 obj
+<<
+/Type /Page
+/Resources <<
+/Font <<
+/F1 4 0 R
+>>
+>>
+/MediaBox [ 0.0 0.0 612 792 ]
+/Parent 2 0 R
+/Contents 6 0 R
+>>
+endobj
+6 0 obj
+<<
+/Length 2140
+>>
+stream
+BT
+/F1 17 Tf
+22 TL
+1 0 0 1 72 726 Tm
+(Data Retention Standard) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 690 Tm
+(Version 2.0 - Effective 1 March 2025) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 667 Tm
+(Owner: Tomas Bergqvist, Data Governance Lead) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 644 Tm
+(This standard states how long Northwind Cartography keeps each class of record, who is) Tj
+T*
+(accountable for the deletion of that class, and how the deletion is evidenced. It) Tj
+T*
+(applies to production systems, analytics warehouses, backups and third-party) Tj
+T*
+(processors. It replaces version 1.6 of 12 June 2023, which did not cover the analytics) Tj
+T*
+(warehouse.) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 560.5 Tm
+(Principles) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 537.5 Tm
+(- Collect the minimum. A field that is not collected does not have to be retained,) Tj
+T*
+(protected or deleted.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 503.5 Tm
+(- Retain for a stated purpose. Every retention period in this standard names the) Tj
+T*
+(purpose that justifies it.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 469.5 Tm
+(- Delete on a schedule, not on request. Deletion is automated so that it happens) Tj
+T*
+(whether or not anyone remembers.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 435.5 Tm
+(- Prove it. Each deletion run writes an evidence record that is itself retained for) Tj
+T*
+(three years.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 401.5 Tm
+(Retention periods in this standard are maximums. A team may hold a record for less) Tj
+T*
+(time than the maximum, and several do, but no team may hold a record for longer) Tj
+T*
+(without an approved legal hold.) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 347 Tm
+(Accountability) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 324 Tm
+(The Data Governance Lead owns this standard. Each retention class has a named) Tj
+T*
+(accountable team, listed in the schedule on page 2. The security team audits a sample) Tj
+T*
+(of deletions each quarter and reports the result to the risk committee, which meets on) Tj
+T*
+(the second Tuesday of February, May, August and November.) Tj
+/F1 8 Tf
+1 0 0 1 72 48 Tm
+(Northwind Cartography - Data Retention Standard v2.0) Tj
+1 0 0 1 480 48 Tm
+(Page 1 of 4) Tj
+ET
+endstream
+endobj
+7 0 obj
+<<
+/Type /Page
+/Resources <<
+/Font <<
+/F1 4 0 R
+>>
+>>
+/MediaBox [ 0.0 0.0 612 792 ]
+/Parent 2 0 R
+/Contents 8 0 R
+>>
+endobj
+8 0 obj
+<<
+/Length 2419
+>>
+stream
+BT
+/F1 17 Tf
+22 TL
+1 0 0 1 72 726 Tm
+(Retention Schedule) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 690 Tm
+(The periods below are measured from the date the record was created, except for) Tj
+T*
+(employee records, which are measured from the termination date. Every period is a) Tj
+T*
+(maximum and every class is purged by the monthly job described on page 3.) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 635.5 Tm
+(Customer and product records) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 612.5 Tm
+(- Customer support transcripts are retained for 400 days. Accountable team: Customer) Tj
+T*
+(Operations.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 578.5 Tm
+(- Atlas API access logs are retained for 90 days. Accountable team: Platform) Tj
+T*
+(Engineering.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 544.5 Tm
+(- Rendered map tile caches are retained for 30 days. Accountable team: Platform) Tj
+T*
+(Engineering.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 510.5 Tm
+(- Geocoding query text is retained for 14 days and is never joined to an account) Tj
+T*
+(identifier. Accountable team: Platform Engineering.) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 476.5 Tm
+(Security, finance and people records) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 453.5 Tm
+(- Security audit logs are retained for 545 days, which is 18 months. Accountable) Tj
+T*
+(team: Security.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 419.5 Tm
+(- Incident postmortem documents are retained for 5 years. Accountable team:) Tj
+T*
+(Reliability.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 385.5 Tm
+(- Billing and invoicing records are retained for 7 years to meet tax law.) Tj
+T*
+(Accountable team: Finance.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 351.5 Tm
+(- Job applicant records for candidates who are not hired are retained for 24 months.) Tj
+T*
+(Accountable team: People Operations.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 317.5 Tm
+(- Employee records are retained for 7 years after the termination date. Accountable) Tj
+T*
+(team: People Operations.) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 283.5 Tm
+(Backups) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 260.5 Tm
+(Encrypted database backups are retained for 35 days and are then destroyed with the) Tj
+T*
+(rest of the snapshot. Because a backup may still hold a record that has been deleted) Tj
+T*
+(from production, a deletion is only certified as complete once the backup window has) Tj
+T*
+(also elapsed.) Tj
+/F1 8 Tf
+1 0 0 1 72 48 Tm
+(Northwind Cartography - Data Retention Standard v2.0) Tj
+1 0 0 1 480 48 Tm
+(Page 2 of 4) Tj
+ET
+endstream
+endobj
+9 0 obj
+<<
+/Type /Page
+/Resources <<
+/Font <<
+/F1 4 0 R
+>>
+>>
+/MediaBox [ 0.0 0.0 612 792 ]
+/Parent 2 0 R
+/Contents 10 0 R
+>>
+endobj
+10 0 obj
+<<
+/Length 2090
+>>
+stream
+BT
+/F1 17 Tf
+22 TL
+1 0 0 1 72 726 Tm
+(Deletion, Holds and Exceptions) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 690 Tm
+(The monthly purge) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 667 Tm
+(The automated purge job runs on the fifth day of every month at 02:00 UTC. It walks) Tj
+T*
+(each retention class in the schedule, deletes the records that have passed their) Tj
+T*
+(maximum period, and writes a signed evidence record giving the class, the row count) Tj
+T*
+(and the job identifier. A purge that fails is retried once; a second failure pages the) Tj
+T*
+(Platform Engineering on-call rotation.) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 583.5 Tm
+(Legal holds) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 560.5 Tm
+(A legal hold suspends deletion for the records it names and overrides every period in) Tj
+T*
+(this standard. Only the General Counsel may place or release a hold, and every open) Tj
+T*
+(hold is reviewed at the quarterly risk committee meeting. Records under hold are) Tj
+T*
+(tagged in place rather than copied, so that a released hold returns the records to) Tj
+T*
+(their normal schedule automatically.) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 477 Tm
+(Customer deletion requests) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 454 Tm
+(A verified customer request to delete personal data is handled inside the window given) Tj
+T*
+(in the Information Security Policy and is fulfilled by the same purge machinery,) Tj
+T*
+(running out of cycle. The requester receives a written confirmation naming each) Tj
+T*
+(retention class that was cleared and each class that was retained under a legal or tax) Tj
+T*
+(obligation.) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 370.5 Tm
+(Exceptions) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 347.5 Tm
+(An exception to this standard is requested in Workbench, is approved jointly by the) Tj
+T*
+(Data Governance Lead and the Chief Information Security Officer, and expires after 180) Tj
+T*
+(days. Nine exceptions were open at the end of the 2024 fiscal year and six had been) Tj
+T*
+(closed by 1 March 2025.) Tj
+/F1 8 Tf
+1 0 0 1 72 48 Tm
+(Northwind Cartography - Data Retention Standard v2.0) Tj
+1 0 0 1 480 48 Tm
+(Page 3 of 4) Tj
+ET
+endstream
+endobj
+11 0 obj
+<<
+/Type /Page
+/Resources <<
+/Font <<
+/F1 4 0 R
+>>
+>>
+/MediaBox [ 0.0 0.0 612 792 ]
+/Parent 2 0 R
+/Contents 12 0 R
+>>
+endobj
+12 0 obj
+<<
+/Length 1944
+>>
+stream
+BT
+/F1 17 Tf
+22 TL
+1 0 0 1 72 726 Tm
+(Verification and Reporting) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 690 Tm
+(Quarterly sampling) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 667 Tm
+(Each quarter the security team draws a sample of 25 records that should have been) Tj
+T*
+(deleted and confirms that no copy remains in production, in the analytics warehouse,) Tj
+T*
+(or with a third-party processor. A sample with any surviving record is treated as a) Tj
+T*
+(control failure and is reported to the risk committee within 10 business days.) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 598 Tm
+(Third-party processors) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 575 Tm
+(Processors must contractually delete Northwind data within 60 days of the end of the) Tj
+T*
+(contract and must provide a certificate of destruction. The processor register is) Tj
+T*
+(reviewed twice a year, in April and October. As of 1 March 2025 Northwind uses 14) Tj
+T*
+(processors that handle personal data.) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 506 Tm
+(Metrics) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 483 Tm
+(- Purge success rate, target 100 percent; the 2024 result was 11 successful runs and) Tj
+T*
+(1 retried run.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 449 Tm
+(- Sampling pass rate, target 100 percent; the 2024 result was 4 passes out of 4) Tj
+T*
+(quarters.) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 415 Tm
+(- Median time to fulfil a customer deletion request, target 10 days; the 2024 median) Tj
+T*
+(was 6 days.) Tj
+/F1 12 Tf
+16 TL
+1 0 0 1 72 381 Tm
+(Related documents) Tj
+/F1 10.5 Tf
+14.5 TL
+1 0 0 1 72 358 Tm
+(This standard should be read with the Information Security Policy, which sets the) Tj
+T*
+(deletion request window and the incident classification rules, and with the Incident) Tj
+T*
+(Response Runbook, which sets the postmortem deadlines for the documents retained under) Tj
+T*
+(the 5-year class.) Tj
+/F1 8 Tf
+1 0 0 1 72 48 Tm
+(Northwind Cartography - Data Retention Standard v2.0) Tj
+1 0 0 1 480 48 Tm
+(Page 4 of 4) Tj
+ET
+endstream
+endobj
+xref
+0 13
+0000000000 65535 f 
+0000000015 00000 n 
+0000000322 00000 n 
+0000000400 00000 n 
+0000000449 00000 n 
+0000000546 00000 n 
+0000000678 00000 n 
+0000002870 00000 n 
+0000003002 00000 n 
+0000005473 00000 n 
+0000005606 00000 n 
+0000007749 00000 n 
+0000007883 00000 n 
+trailer
+<<
+/Size 13
+/Root 3 0 R
+/Info 1 0 R
+>>
+startxref
+9880
+%%EOF
