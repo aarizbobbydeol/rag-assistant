@@ -6,6 +6,7 @@ import pytest
 
 from app.generation.guardrails import (
     check_groundedness,
+    money_slot_unfilled,
     query_term_coverage,
     sentence_support,
     should_abstain,
@@ -408,3 +409,27 @@ def test_query_coverage_of_a_contentless_question_defers_to_the_score_gate(
 
 def test_query_coverage_with_no_contexts_is_zero(scored_factory) -> None:
     assert query_term_coverage("cryptocurrency payments policy", []) == 0.0
+
+
+def test_money_slot_accepts_an_explicitly_free_answer(settings):
+    """"Included at no employee premium" answers a price question completely.
+
+    It contains no money token, so a naive slot check refuses the clearest
+    possible answer in the corpus.
+    """
+    question = "Do the dental and vision plans cost the employee anything?"
+    answer = "Both are included at no employee premium [1]."
+    assert not money_slot_unfilled(question, answer, settings)
+
+
+def test_money_slot_is_not_fooled_by_a_product_named_free(settings):
+    """"The Free tier" is a product name, not a statement that it is free."""
+    question = "How much does the Enterprise tier cost per month?"
+    answer = "The Free tier allows 60 requests per minute, the Enterprise tier 4,000 [1]."
+    assert money_slot_unfilled(question, answer, settings)
+
+
+def test_money_slot_ignores_questions_that_are_not_about_price(settings):
+    question = "What is the Free tier rate limit?"
+    answer = "The Free tier allows 60 requests per minute [1]."
+    assert not money_slot_unfilled(question, answer, settings)

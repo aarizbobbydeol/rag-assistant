@@ -7,6 +7,7 @@ directory so runs never touch the developer's real index.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -18,6 +19,20 @@ if str(ROOT) not in sys.path:
 
 from app.config import Settings  # noqa: E402
 from app.models import Chunk, Document, ScoredChunk  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def isolate_settings_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the developer's ``.env`` and shell out of the test run.
+
+    ``Settings`` reads ``.env`` from the working directory, so a real API key or
+    a pinned backend on one machine silently changes what the tests assert -
+    and CI, which has no ``.env``, then disagrees with the local run. Tests that
+    want a non-default setting must say so explicitly.
+    """
+    for key in [name for name in os.environ if name.startswith("RAG_")]:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
 
 
 @pytest.fixture

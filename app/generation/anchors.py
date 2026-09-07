@@ -55,6 +55,35 @@ _NEGATION_CUES = frozenset(
     don wasn werent hasn havent""".split()
 )
 
+# The orphan-span detector exists to catch a missing *attribute value* - "the
+# annual maximum on the dental plan", where the passage names the plan and
+# states no maximum. Requiring one of these words in the span is what keeps it
+# to that job. Without it the detector fires on ordinary verb phrases ("keep
+# working", "take effect", "still acceptable") and refuses questions the corpus
+# answers perfectly well.
+#
+# Note this cannot be a rarity threshold: measured over the sample corpus,
+# "keep" and "still" have df=1 while "annual" and "maximum" have df=3, so
+# filtering by document frequency removes the real catch and keeps every false
+# positive. The distinction is grammatical, not statistical.
+_ATTRIBUTE_TERMS = frozenset(
+    stem(word)
+    for word in (
+        # quantities and ceilings
+        "maximum minimum cap caps limit limits threshold thresholds target"
+        " targets quota allowance budget deductible premium copay fee fees"
+        " cost costs price rate charge"
+        # durations and schedules
+        " duration period deadline notice frequency interval window timeout"
+        " retention expiry"
+        # sizes and counts
+        " size length count total number percentage percent share portion"
+        # qualifiers that pair with the above
+        " annual annually monthly weekly daily yearly hourly default"
+        " standard base initial"
+    ).split()
+)
+
 # How far to the left of an occurrence a negation cue still scopes over it.
 _NEG_WINDOW = 6
 _CLAUSE_BREAK = re.compile(r"[.;:!?]")
@@ -74,8 +103,18 @@ _LOOSE = re.compile(r"\b([A-Za-z]{2,12}) (\d{1,5}(?:\.\d{1,5})?)\b")
 # learned when the glued form never appears.
 _CAPS_FAMILY = re.compile(r"\b([A-Z]{2,12}) (\d{1,5}(?:\.\d{1,5})?)\b")
 
+# Documents write a version one way and readers ask about it another: the API
+# reference header says "Version 2.8" where the question says "v2.8". Without
+# folding the two, the guard refuses a question the document answers on its
+# very first line.
+_PREFIX_ALIASES = {"version": "v", "ver": "v", "rev": "v", "revision": "v"}
+
 _SUBTOKEN = re.compile(r"[_\-]")
 _WORD = re.compile(r"[A-Za-z0-9_]+")
+
+
+def _canonical_prefix(prefix: str) -> str:
+    return _PREFIX_ALIASES.get(prefix.lower(), prefix.lower())
 
 
 @dataclass(frozen=True)
@@ -136,7 +175,7 @@ def _is_negated(text: str, start: int) -> bool:
 
 def _identifier_occurrences(text: str) -> Iterable[tuple[str, str, int]]:
     for match in _IDENT.finditer(text):
-        yield match.group(1).lower(), match.group(2), match.start()
+        yield _canonical_prefix(match.group(1)), match.group(2), match.start()
 
 
 def build_anchor_index(texts: Sequence[str]) -> AnchorIndex:
@@ -151,7 +190,15 @@ def build_anchor_index(texts: Sequence[str]) -> AnchorIndex:
     # chunks that happen to come later.
     for text in texts:
         families.update(prefix for prefix, _, _ in _identifier_occurrences(text))
-        families.update(m.group(1).lower() for m in _CAPS_FAMILY.finditer(text))
+        families.update(_canonical_prefix(m.group(1)) for m in _CAPS_FAMILY.finditer(text))
+        # "Version 2.8" is a version identifier whatever its casing, so a known
+        # version word seeds its family directly rather than waiting for a
+        # glued or all-caps spelling that a prose document may never use.
+        families.update(
+            _canonical_prefix(m.group(1))
+            for m in _LOOSE.finditer(text)
+            if m.group(1).lower() in _PREFIX_ALIASES
+        )
 
     for text in texts:
         for prefix, digits, start in _identifier_occurrences(text):
@@ -160,7 +207,7 @@ def build_anchor_index(texts: Sequence[str]) -> AnchorIndex:
 
         # Space-separated identifiers only count for a learned family.
         for match in _LOOSE.finditer(text):
-            prefix = match.group(1).lower()
+            prefix = _canonical_prefix(match.group(1))
             if prefix in families and not _is_negated(text, match.start()):
                 identifiers.add((prefix, match.group(2)))
 
@@ -184,9 +231,9 @@ def _question_identifiers(question: str, index: AnchorIndex) -> list[tuple[str, 
     """
     found = [(p, d) for p, d, _ in _identifier_occurrences(question)]
     found += [
-        (m.group(1).lower(), m.group(2))
+        (_canonical_prefix(m.group(1)), m.group(2))
         for m in _LOOSE.finditer(question)
-        if m.group(1).lower() in index.families
+        if _canonical_prefix(m.group(1)) in index.families
     ]
     return found
 
@@ -282,17 +329,22 @@ def _orphan_span_misses(
         key=lambda vocab: sum(idf(a) for a in anchors if a in vocab),
     )
 
+    def flush(run: list[str]) -> None:
+        # An orphan run only counts as evidence when it is asking for an
+        # attribute the passage does not carry. A run of ordinary verbs is a
+        # phrasing accident, not a missing fact.
+        if len(run) >= min_span and any(token in _ATTRIBUTE_TERMS for token in run):
+            misses.append(AnchorMiss("orphan_span", " ".join(run)))
+
     misses: list[AnchorMiss] = []
     run: list[str] = []
     for token in anchors:
         if token not in pivot and index.df.get(token, 0) >= 1:
             run.append(token)
             continue
-        if len(run) >= min_span:
-            misses.append(AnchorMiss("orphan_span", " ".join(run)))
+        flush(run)
         run = []
-    if len(run) >= min_span:
-        misses.append(AnchorMiss("orphan_span", " ".join(run)))
+    flush(run)
     return misses
 
 

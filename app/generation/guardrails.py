@@ -213,7 +213,18 @@ _PRICE_CUES = frozenset(
 # "percent" is money-adjacent on purpose: "40 percent of the replacement price"
 # is a real answer to a question about cost.
 _MONEY_RE = re.compile(
-    r"[$€£]|(?:dollars?|usd|eur|euros?|gbp|pounds?|cents?|percent|percentage)",
+    r"[$\u20ac\u00a3]|\b(?:dollars?|usd|eur|euros?|gbp|pounds?|cents?|percent|percentage)\b",
+    re.IGNORECASE,
+)
+
+# "It is free" answers "what does it cost" completely, and contains no money
+# token at all, so the slot check has to recognise it or it refuses the
+# clearest answer in the corpus.
+_FREE_RE = re.compile(
+    r"\b(?:free of charge|at no (?:\w+ )?(?:cost|charge|premium|expense)"
+    r"|no (?:\w+ )?(?:cost|charge|premium|fee|fees) (?:to|for) (?:the )?employee"
+    r"|no (?:employee|additional|extra) (?:cost|charge|premium|fee|fees)"
+    r"|complimentary|fully (?:covered|paid)|covered in full)\b",
     re.IGNORECASE,
 )
 
@@ -286,7 +297,13 @@ def money_slot_unfilled(question: str, answer: str, settings: Settings) -> bool:
     asked = {stem(word) for word in tokenize(question)}
     if not (asked & _PRICE_CUES):
         return False
-    return not _MONEY_RE.search(strip_markers(answer))
+    body = strip_markers(answer)
+    # "Both are included at no employee premium" answers a price question
+    # completely while containing no money token at all. Refusing it would turn
+    # the clearest possible answer - it is free - into a refusal.
+    if _FREE_RE.search(body):
+        return False
+    return not _MONEY_RE.search(body)
 
 
 def should_abstain(top_score: float, settings: Settings) -> bool:

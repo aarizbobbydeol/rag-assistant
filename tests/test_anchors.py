@@ -216,3 +216,36 @@ def test_no_answerable_question_fires_in_any_casing(question, real_corpus):
     index, vocabs = real_corpus
     for variant in (question, question.lower(), question.title(), question.upper()):
         assert missing_anchors(variant, vocabs, index) == [], f"fired on: {variant}"
+
+
+# --------------------------------------------------------------------------- #
+# regressions found by the held-out set
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "question",
+    [
+        # Ordinary verb and adverb phrases are not missing attributes. Each of
+        # these wrongly refused a question the corpus answers, because the span
+        # was two adjacent content words the pivot chunk happened not to use.
+        "How long will the old signing secret keep working?",
+        "Is TLS 1.2 still acceptable for data in transit?",
+        "When did that version take effect?",
+    ],
+)
+def test_orphan_span_ignores_ordinary_verb_phrases(question, index, vocabs):
+    assert not fires(question, index, vocabs)
+
+
+def test_orphan_span_still_catches_a_missing_attribute(index, vocabs):
+    """The detector's actual job, which the verb-phrase fix must not break."""
+    misses = missing_anchors(
+        "What is the annual maximum benefit on the Larkspur Dental plan?", vocabs, index
+    )
+    assert [m.detector for m in misses] == ["orphan_span"]
+
+
+def test_version_prefix_aliases_fold_together(index, vocabs):
+    """The header says "Version 2.8"; readers ask about "v2.8"."""
+    corpus = build_anchor_index(["Atlas API. Version 2.8 | Effective 1 March 2025"])
+    assert ("v", "2.8") in corpus.identifiers
+    assert not missing_anchors("When did v2.8 take effect?", vocabs, corpus)
