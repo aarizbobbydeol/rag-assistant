@@ -26,7 +26,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     RAG_PORT=8000 \
     RAG_DATA_DIR=/data \
     RAG_INDEX_DIR=/data/index \
-    RAG_CORPUS_DIR=/data/corpus \
+    RAG_CORPUS_DIR=/app/data/corpus \
     RAG_UPLOAD_DIR=/data/uploads \
     RAG_AUTH_DB_PATH=/data/users.sqlite3
 
@@ -42,11 +42,14 @@ COPY --from=deps /opt/venv /opt/venv
 COPY --chown=rag:rag app/ ./app/
 COPY --chown=rag:rag eval/ ./eval/
 COPY --chown=rag:rag scripts/ ./scripts/
+# The sample corpus ships in the image: without it a deployed container comes
+# up healthy with an empty index and abstains on every question.
+COPY --chown=rag:rag data/corpus/ ./data/corpus/
 COPY --chown=rag:rag data/golden/ ./data/golden/
 COPY --chown=rag:rag pyproject.toml README.md ./
 COPY --from=web --chown=rag:rag /web/dist ./web/dist
 
-RUN mkdir -p /data/index /data/corpus /data/uploads && chown -R rag:rag /data
+RUN mkdir -p /data/index /data/uploads && chown -R rag:rag /data
 USER rag
 VOLUME ["/data"]
 EXPOSE 8000

@@ -49,7 +49,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_json)
     logger.info("starting", extra={"version": settings.version, "port": settings.port})
-    get_pipeline()  # build the index eagerly so the first request is not slow
+    pipeline = get_pipeline()  # build the index eagerly so the first request is not slow
+
+    # A container starts with no persisted index, and nothing else ingests the
+    # corpus, so without this a deployed instance comes up healthy and abstains
+    # on every question - the worst kind of failure, because it looks like it is
+    # working. Seeding from the configured corpus makes a fresh deploy useful on
+    # its first request, and is a no-op once an index exists.
+    if not len(pipeline.index) and settings.corpus_dir.is_dir():
+        result = pipeline.ingest_paths([settings.corpus_dir], recursive=True)
+        logger.info(
+            "seeded_corpus",
+            extra={
+                "corpus_dir": str(settings.corpus_dir),
+                "documents": result.total_documents,
+                "chunks": len(pipeline.index),
+            },
+        )
+
     yield
     logger.info("shutting_down")
 
