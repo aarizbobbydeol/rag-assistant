@@ -1,0 +1,37 @@
+# Render blueprint for the public demo.
+#
+# The free web service plan needs no credit card and gives a stable HTTPS URL,
+# which is what a CV link needs. It spins down after 15 minutes without traffic
+# and takes roughly a minute to come back, so the first visitor after a quiet
+# period waits. See the README for the keep-warm options and their cost in
+# instance hours.
+services:
+  - type: web
+    name: rag-assistant
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    # /live answers without touching the pipeline, so it stays fast during the
+    # startup ingest. /ready is the one that reports the chunk count.
+    healthCheckPath: /live
+    autoDeployTrigger: commit
+    envVars:
+      - key: RAG_LOG_JSON
+        value: "true"
+      - key: RAG_LOG_LEVEL
+        value: INFO
+      # The demo is public, so it runs on the offline extractive answerer: no
+      # key to leak, no quota a visitor can burn, and nothing to rate limit.
+      # Retrieval, citations and the refusal guard - the parts worth showing -
+      # are all unaffected by this.
+      - key: RAG_LLM_API_KEY
+        value: ""
+      # Anonymous read-only access. Registration stays off so the public URL
+      # cannot accumulate accounts.
+      - key: RAG_AUTH_REQUIRED
+        value: "false"
+      - key: RAG_AUTH_ALLOW_REGISTRATION
+        value: "false"
+      - key: RAG_AUTH_SECRET
+        generateValue: true

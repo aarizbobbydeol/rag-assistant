@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.2", "pytest-asyncio>=0.23", "ruff>=0.5"]
+dev = ["pytest>=8.2", "pytest-asyncio>=0.23", "ruff>=0.5", "PyYAML>=6.0"]
 faiss = ["faiss-cpu>=1.8"]
 local-models = ["sentence-transformers>=3.0"]
 openai = ["openai>=1.30", "tiktoken>=0.7"]
