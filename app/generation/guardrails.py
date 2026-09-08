@@ -22,7 +22,12 @@ from collections.abc import Sequence
 import numpy as np
 
 from app.config import Settings
-from app.generation.anchors import AnchorIndex, AnchorMiss, missing_anchors
+from app.generation.anchors import (
+    SCAFFOLD_TERMS,
+    AnchorIndex,
+    AnchorMiss,
+    missing_anchors,
+)
 from app.generation.citations import extract_markers, strip_markers
 from app.models import Citation, Groundedness, ScoredChunk, SentenceSupport
 from app.observability import get_logger
@@ -244,7 +249,14 @@ def query_term_coverage(question: str, contexts: Sequence[ScoredChunk]) -> float
     absent term. Returns 1.0 for a question with no content words, leaving the
     decision to the retrieval-score gate.
     """
-    terms = {stem(word) for word in content_words(question)}
+    # Interrogative scaffolding is not part of the question's subject. Counting
+    # "much" against "how much is the commuter allowance" charges the asker for
+    # the grammar of asking: the corpus states the allowance, but never writes
+    # the word "much", so the term reads as absent and the gate refuses an
+    # answer that is right there.
+    terms = {
+        stem(word) for word in content_words(question) if word not in SCAFFOLD_TERMS
+    }
     if not terms:
         return 1.0
     vocabulary: set[str] = set()

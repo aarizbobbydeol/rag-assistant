@@ -123,10 +123,12 @@ class Settings(BaseSettings):
         0.10, description="Below this top-1 score the assistant refuses to answer."
     )
     min_query_coverage: float = Field(
-        0.65,
+        0.70,
         description=(
-            "Fraction of the question's content words that must appear somewhere in "
-            "the retrieved context before the assistant will answer at all."
+            "Fraction of the question's subject terms that must appear somewhere in "
+            "the retrieved context before the assistant will answer at all. "
+            "Interrogative scaffolding is excluded from the denominator, so this "
+            "sits higher than a raw content-word fraction would."
         ),
     )
     anchor_guard_enabled: bool = Field(

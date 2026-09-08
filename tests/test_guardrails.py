@@ -386,8 +386,20 @@ def test_query_coverage_is_one_when_every_term_is_present(scored_factory) -> Non
 
 def test_query_coverage_counts_each_missing_term(scored_factory) -> None:
     contexts = [scored_factory("c1", "Approved refunds settle within 5 to 10 business days.")]
-    # "long" is a content word the passage never uses: 3 of 4 terms covered.
-    assert query_term_coverage("How long do approved refunds settle?", contexts) == 0.75
+    # "policy" is a subject term the passage never uses: 3 of 4 terms covered.
+    assert query_term_coverage("What is the approved refunds business policy?", contexts) == 0.75
+
+
+def test_query_coverage_ignores_interrogative_scaffolding(scored_factory) -> None:
+    """"How long" is how the question is asked, not what it is about.
+
+    The passage answers this completely, yet it never writes the word "long" -
+    no passage would. Counting it as an absent subject term is what made the
+    gate refuse ordinary phrasings like "how much is the commuter allowance".
+    """
+    contexts = [scored_factory("c1", "Approved refunds settle within 5 to 10 business days.")]
+    assert query_term_coverage("How long do approved refunds settle?", contexts) == 1.0
+    assert query_term_coverage("How many approved refunds settle?", contexts) == 1.0
 
 
 def test_query_coverage_falls_when_the_subject_is_absent(scored_factory) -> None:
