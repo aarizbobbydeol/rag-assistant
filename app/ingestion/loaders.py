@@ -1,8 +1,14 @@
 """Turn files and byte payloads into :class:`~app.models.Document` objects.
 
-Extraction is deliberately dependency-light: PDFs go through ``pypdf`` (a
-declared dependency) and everything else is handled with the standard library,
-so the ingestion layer works in an offline container with no parser stack.
+Extraction is deliberately dependency-light: the common paths go through
+``pypdf`` (a declared dependency) and the standard library, so the ingestion
+layer works in an offline container with no parser stack.
+
+PDFs get two optional fallbacks on top of that, because a scanned document -
+a page that is a picture of words - is invisible to any text parser and is
+exactly what people upload. PyMuPDF handles PDFs whose text layer pypdf
+mis-reads, and PyMuPDF plus Tesseract reads the scans. Both are optional: when
+they are absent the file is rejected with "No extractable text" as before.
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ import html
 import io
 import json
 import re
+import shutil
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -188,7 +195,97 @@ def _extract_plain(data: bytes) -> tuple[str, str, dict[str, Any]]:
     return normalize_whitespace(_decode(data)), "", {}
 
 
+# A PDF stores a line of type, not a line of prose, so a sentence that wrapped
+# in the layout arrives with a hard newline inside it. Sentence splitting then
+# treats each visual line as a whole sentence, and an extractive answer quotes
+# "Refrigerated trailers must maintain a temperature between" and stops - the
+# number, which is the entire answer, was on the next line. Rejoining wrapped
+# lines before anything downstream sees the text is what prevents that.
+_ENDS_SENTENCE = re.compile(r"[.!?:;\"”’)\]]$")
+_LIST_OR_HEADING = re.compile(r"^\s*(?:[-*•–]|#{1,6}\s|\d+[.)]\s|\|)")
+_CONTINUES = re.compile(r"^[a-z0-9(“\"']")
+
+
+def _unwrap_pdf_lines(text: str) -> str:
+    """Rejoin lines a PDF broke for layout, keeping real paragraph breaks.
+
+    A break is treated as layout - not structure - only when the previous line
+    does not end like a sentence and the next line reads like its continuation.
+    Headings, list items and table rows are left alone, because those newlines
+    carry meaning.
+    """
+    out: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            out.append("")
+            continue
+        if (
+            out
+            and out[-1]
+            and not _ENDS_SENTENCE.search(out[-1])
+            and not _LIST_OR_HEADING.match(stripped)
+            and not _LIST_OR_HEADING.match(out[-1])
+            and _CONTINUES.match(stripped)
+        ):
+            # A hyphen at the wrap point is the word being split, not punctuation.
+            if out[-1].endswith("-") and not out[-1].endswith("--"):
+                out[-1] = out[-1][:-1] + stripped
+            else:
+                out[-1] = f"{out[-1]} {stripped}"
+            continue
+        out.append(stripped)
+    return chr(10).join(out)
+
+
 def _extract_pdf(data: bytes) -> tuple[str, str, dict[str, Any]]:
+    """Text from a PDF, falling back through progressively heavier extractors.
+
+    Three kinds of PDF turn up, and only the first is easy:
+
+    * a text layer ``pypdf`` reads - the common case, and the cheapest;
+    * a text layer ``pypdf`` mis-reads, usually odd encodings or vector text,
+      which PyMuPDF's parser handles;
+    * a scan, where the page is an image of words and there is no text at all.
+      Nothing but OCR can read that one.
+
+    Each step runs only when the previous produced nothing, so a normal document
+    never pays for the fallbacks, and the optional ones degrade to a clear
+    message rather than an import error when they are not installed.
+    """
+    pages, raw_title = _pdf_pages_pypdf(data)
+    extractor = "pypdf"
+
+    if not any(page.strip() for page in pages):
+        fallback, title = _pdf_pages_pymupdf(data, ocr=False)
+        if any(page.strip() for page in fallback):
+            pages, raw_title, extractor = fallback, title or raw_title, "pymupdf"
+
+    if not any(page.strip() for page in pages):
+        fallback, title = _pdf_pages_pymupdf(data, ocr=True)
+        if any(page.strip() for page in fallback):
+            pages, raw_title, extractor = fallback, title or raw_title, "pymupdf-ocr"
+
+    if not any(page.strip() for page in pages):
+        # "No extractable text" is true but unhelpful: the user is looking at a
+        # document full of words. Say which of the two things went wrong.
+        raise DocumentLoadError(
+            "This PDF is a scan, so it has no text to extract",
+            "Every page is an image. Install Tesseract to have the server read it "
+            "with OCR, or upload a PDF whose text can be selected in a viewer."
+            if not shutil.which("tesseract")
+            else "OCR ran but produced no text; the scan may be too low-resolution.",
+        )
+
+    text, spans = build_page_spans(pages)
+    return text, normalize_whitespace(str(raw_title)), {
+        "page_count": len(pages),
+        "page_spans": spans,
+        "extractor": extractor,
+    }
+
+
+def _pdf_pages_pypdf(data: bytes) -> tuple[list[str], str]:
     try:
         from pypdf import PdfReader
 
@@ -196,16 +293,46 @@ def _extract_pdf(data: bytes) -> tuple[str, str, dict[str, Any]]:
         if reader.is_encrypted:
             # Many "protected" PDFs open with the empty owner password.
             reader.decrypt("")
-        pages = [normalize_whitespace(page.extract_text() or "") for page in reader.pages]
-        raw_title = getattr(reader.metadata, "title", None) or ""
+        pages = [
+            _unwrap_pdf_lines(normalize_whitespace(page.extract_text() or ""))
+            for page in reader.pages
+        ]
+        return pages, getattr(reader.metadata, "title", None) or ""
     except Exception as exc:  # pypdf raises a wide family of parse errors
         raise DocumentLoadError("Could not parse PDF", str(exc)) from exc
 
-    text, spans = build_page_spans(pages)
-    return text, normalize_whitespace(str(raw_title)), {
-        "page_count": len(pages),
-        "page_spans": spans,
-    }
+
+def _pdf_pages_pymupdf(data: bytes, *, ocr: bool) -> tuple[list[str], str]:
+    """PyMuPDF extraction, optionally through OCR. Optional dependency.
+
+    Returns no pages rather than raising when PyMuPDF is absent, or when OCR is
+    requested and Tesseract is not on PATH: a missing optional extractor should
+    leave the caller reporting "no extractable text", not an ImportError.
+    """
+    try:
+        import pymupdf
+    except ImportError:
+        return [], ""
+
+    if ocr and not shutil.which("tesseract"):
+        logger.info("ocr_unavailable", extra={"reason": "tesseract not on PATH"})
+        return [], ""
+
+    try:
+        with pymupdf.open(stream=data, filetype="pdf") as doc:
+            pages = []
+            for page in doc:
+                if ocr:
+                    # 300 dpi is the usual floor for reliable OCR of body text.
+                    raw = page.get_textpage_ocr(dpi=300, full=True).extractText()
+                else:
+                    raw = page.get_text()
+                pages.append(_unwrap_pdf_lines(normalize_whitespace(raw or "")))
+            title = (doc.metadata or {}).get("title") or ""
+        return pages, title
+    except Exception as exc:
+        logger.info("pymupdf_extract_failed", extra={"ocr": ocr, "error": str(exc)})
+        return [], ""
 
 
 def _extract_html(data: bytes) -> tuple[str, str, dict[str, Any]]:

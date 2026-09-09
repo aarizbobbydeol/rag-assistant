@@ -28,6 +28,7 @@ local-models = ["sentence-transformers>=3.0"]
 openai = ["openai>=1.30", "tiktoken>=0.7"]
 pgvector = ["psycopg[binary]>=3.1", "pgvector>=0.2.5"]
 qdrant = ["qdrant-client>=1.9"]
+ocr = ["PyMuPDF>=1.24"]
 
 [tool.setuptools.packages.find]
 include = ["app*", "eval*"]

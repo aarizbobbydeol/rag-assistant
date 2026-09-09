@@ -15,7 +15,8 @@ WORKDIR /build
 COPY requirements.txt ./
 RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install --upgrade pip \
- && /opt/venv/bin/pip install -r requirements.txt
+ && /opt/venv/bin/pip install -r requirements.txt \
+ && /opt/venv/bin/pip install "PyMuPDF>=1.24"
 
 # ---------- stage 3: runtime ----------
 FROM python:3.12-slim AS runtime
@@ -30,9 +31,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     RAG_UPLOAD_DIR=/data/uploads \
     RAG_AUTH_DB_PATH=/data/users.sqlite3
 
-# curl is only here for the container healthcheck.
+# curl is for the container healthcheck. tesseract is what lets the server read
+# a scanned PDF - a page that is an image of words, invisible to any text parser
+# and exactly what people upload. Without it those files are rejected outright.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl \
+ && apt-get install -y --no-install-recommends curl tesseract-ocr tesseract-ocr-eng \
  && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 10001 rag

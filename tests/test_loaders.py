@@ -336,3 +336,76 @@ def test_pdf_without_metadata_title_falls_back_to_stem(tmp_path: Path) -> None:
 
     assert doc.title == "unnamed-report"
     assert doc.metadata["page_spans"] == [[0, len(doc.text), 1]]
+
+
+# --------------------------------------------------------------------------- #
+# PDFs: wrapped lines and scans
+# --------------------------------------------------------------------------- #
+def test_pdf_wrapped_lines_are_rejoined_into_sentences():
+    """A PDF breaks lines for layout, not for meaning.
+
+    Left alone, a sentence that wrapped becomes two "sentences", and an
+    extractive answer quotes "must maintain a temperature between" and stops -
+    dropping the number, which was the entire answer.
+    """
+    from app.ingestion.loaders import _unwrap_pdf_lines
+
+    wrapped = (
+        "Refrigerated trailers must maintain a temperature between\n"
+        "2 and 8 degrees Celsius at all times during transit.\n"
+    )
+    assert "between 2 and 8 degrees" in _unwrap_pdf_lines(wrapped)
+
+
+def test_unwrap_keeps_real_structure():
+    """Headings, list items and finished sentences own their line breaks."""
+    from app.ingestion.loaders import _unwrap_pdf_lines
+
+    structured = "# Severity levels\n- SEV-1 is a total outage.\n- SEV-2 is degradation.\nDone."
+    assert _unwrap_pdf_lines(structured).count("\n") == 3
+
+
+def test_unwrap_rejoins_a_hyphenated_word_without_a_space():
+    from app.ingestion.loaders import _unwrap_pdf_lines
+
+    assert "quarantined" in _unwrap_pdf_lines("the load must be quaran-\ntined immediately.")
+
+
+def test_a_scanned_pdf_says_it_is_a_scan(monkeypatch):
+    """"No extractable text" is true but useless when the page is full of words.
+
+    The user needs to know the file is a scan and that OCR is what reads it.
+    """
+    import shutil as shutil_module
+
+    from app.errors import DocumentLoadError
+    from app.ingestion import loaders
+
+    monkeypatch.setattr(loaders, "_pdf_pages_pypdf", lambda data: ([""], ""))
+    monkeypatch.setattr(loaders, "_pdf_pages_pymupdf", lambda data, *, ocr: ([], ""))
+    monkeypatch.setattr(shutil_module, "which", lambda name: None)
+
+    with pytest.raises(DocumentLoadError) as caught:
+        loaders._extract_pdf(b"%PDF-1.4 fake")
+
+    assert "scan" in caught.value.message.lower()
+    assert "ocr" in (caught.value.detail or "").lower()
+
+
+def test_ocr_is_only_attempted_when_the_text_layer_is_empty(monkeypatch):
+    """OCR is slow, so a normal PDF must never pay for it."""
+    from app.ingestion import loaders
+
+    calls: list[bool] = []
+
+    def fake_pymupdf(data, *, ocr):
+        calls.append(ocr)
+        return [], ""
+
+    monkeypatch.setattr(loaders, "_pdf_pages_pypdf", lambda data: (["Real text here."], "T"))
+    monkeypatch.setattr(loaders, "_pdf_pages_pymupdf", fake_pymupdf)
+
+    text, _, extra = loaders._extract_pdf(b"%PDF-1.4 fake")
+    assert "Real text here." in text
+    assert extra["extractor"] == "pypdf"
+    assert calls == []
