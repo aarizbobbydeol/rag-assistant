@@ -97,7 +97,11 @@ def test_empty_index_abstains(settings: Settings) -> None:
     pipe.index.clear()
     result = pipe.answer("anything at all")
     assert result.groundedness.abstained
-    assert result.answer == settings.abstain_message
+    assert result.groundedness.reason == "empty_index"
+    # An empty index is a setup problem, not an unanswerable question, and the
+    # refusal should say which - "I could not find enough support for that"
+    # sends the reader looking for a better question when they need a document.
+    assert "upload" in result.answer.lower()
 
 
 def test_conversation_memory_condenses_follow_ups(pipeline: RagPipeline) -> None:

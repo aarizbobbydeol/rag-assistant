@@ -13,8 +13,10 @@ from pathlib import Path
 
 from app.config import Settings
 from app.errors import DocumentLoadError, UnsupportedFileType
+from app.generation.anchors import AnchorMiss
 from app.generation.citations import renumber_answer
 from app.generation.guardrails import (
+    abstention_message,
     anchor_support,
     check_groundedness,
     money_slot_unfilled,
@@ -248,6 +250,7 @@ class RagPipeline:
         # passage that does not address the question.
         coverage = query_term_coverage(standalone, contexts)
         reason = None
+        anchors: list[AnchorMiss] = []
         if not contexts:
             reason = "empty_index" if not len(self.index) else "no_results"
         elif should_abstain(top_score, cfg):
@@ -272,7 +275,7 @@ class RagPipeline:
         if reason is not None:
             return self._abstain(
                 question, standalone, contexts, session_id, trace_id, latency, usage, reason,
-                include_contexts,
+                include_contexts, anchors,
             )
 
         with timed(latency, "generate"):
@@ -302,7 +305,7 @@ class RagPipeline:
             # happily and the answer quotes requests-per-minute as though that
             # were a price. Every clause is grounded; none of it is money.
             ABSTENTIONS.labels(reason="money_slot_unfilled").inc()
-            answer_text = cfg.abstain_message
+            answer_text = abstention_message("money_slot_unfilled", contexts, (), cfg)
             citations = []
             grounded = Groundedness(
                 score=1.0, abstained=True, reason="money_slot_unfilled"
@@ -395,10 +398,11 @@ class RagPipeline:
         usage: Usage,
         reason: str,
         include_contexts: bool,
+        anchors: Sequence[AnchorMiss] = (),
     ) -> AnswerResult:
         ABSTENTIONS.labels(reason=reason).inc()
         QUESTIONS.labels(outcome="abstained").inc()
-        message = self.settings.abstain_message
+        message = abstention_message(reason, contexts, anchors, self.settings)
         if session_id:
             self.sessions.append(session_id, Turn(role="user", content=question))
             self.sessions.append(

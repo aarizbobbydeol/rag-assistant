@@ -445,3 +445,55 @@ def test_money_slot_ignores_questions_that_are_not_about_price(settings):
     question = "What is the Free tier rate limit?"
     answer = "The Free tier allows 60 requests per minute [1]."
     assert not money_slot_unfilled(question, answer, settings)
+
+
+# --------------------------------------------------------------------------- #
+# what a refusal actually says
+# --------------------------------------------------------------------------- #
+def test_refusal_names_the_missing_term_and_the_document(settings, scored_factory):
+    """A refusal has to tell the reader what to do next.
+
+    "I could not find enough support for that" is true of every refusal, so it
+    cannot distinguish a wrong upload from a wrong assumption. Naming the term
+    the documents never attest lets the reader correct themselves.
+    """
+    from app.generation.anchors import AnchorMiss
+    from app.generation.guardrails import abstention_message
+
+    contexts = [scored_factory("c1", "SEV-3 is acknowledged within 4 business hours.")]
+    contexts[0].chunk.title = "Incident Response Runbook"
+
+    message = abstention_message("anchor_missing", contexts, [AnchorMiss("identifier", "SEV-4")], settings)
+
+    assert "SEV-4" in message
+    assert "Incident Response Runbook" in message
+
+
+def test_refusal_falls_back_when_there_is_nothing_specific_to_say(settings, scored_factory):
+    from app.generation.guardrails import abstention_message
+
+    contexts = [scored_factory("c1", "Anything at all.")]
+    contexts[0].chunk.title = "Handbook"
+    assert "Handbook" in abstention_message("query_terms_absent", contexts, [], settings)
+
+
+def test_refusal_on_an_empty_index_says_to_upload_something(settings):
+    from app.generation.guardrails import abstention_message
+
+    message = abstention_message("empty_index", [], [], settings)
+    assert "upload" in message.lower()
+
+
+def test_refusal_stops_naming_documents_once_the_list_is_noise(settings, scored_factory):
+    """Five titles mid-sentence is not information the reader can use."""
+    from app.generation.guardrails import abstention_message
+
+    contexts = []
+    for index in range(5):
+        scored = scored_factory(f"c{index}", "Some text.")
+        scored.chunk.title = f"Document {index}"
+        contexts.append(scored)
+
+    message = abstention_message("query_terms_absent", contexts, [], settings)
+    assert "Document 0" not in message
+    assert "indexed documents" in message

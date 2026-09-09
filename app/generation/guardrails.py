@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from pathlib import Path
 
 import numpy as np
 
@@ -51,6 +52,7 @@ __all__ = [
     "query_term_coverage",
     "anchor_support",
     "money_slot_unfilled",
+    "abstention_message",
 ]
 
 
@@ -316,6 +318,72 @@ def money_slot_unfilled(question: str, answer: str, settings: Settings) -> bool:
     if _FREE_RE.search(body):
         return False
     return not _MONEY_RE.search(body)
+
+
+def abstention_message(
+    reason: str,
+    contexts: Sequence[ScoredChunk],
+    anchors: Sequence[AnchorMiss],
+    settings: Settings,
+) -> str:
+    """Say what was actually missing, and from which document.
+
+    "I could not find enough support for that in the indexed documents" is true
+    for every refusal and therefore tells the reader nothing: they cannot see
+    whether they uploaded the wrong file, misremembered a term, or asked
+    something the document genuinely never covers. Each of those needs a
+    different next move from them.
+
+    Everything needed to say which is already computed and then thrown away -
+    the gate that fired, the anchor it objected to, and the documents that were
+    searched. This assembles it into a sentence a person can act on.
+    """
+    sources = _source_names(contexts)
+
+    if reason == "empty_index":
+        return "No documents are indexed yet. Upload a file and ask again."
+    if reason == "no_results":
+        return "I could not find anything relevant in the indexed documents."
+
+    if reason == "anchor_missing" and anchors:
+        # The single most useful thing we know: the exact term the documents
+        # never attest. Naming it lets the reader correct a wrong assumption
+        # ("there is no SEV-4") rather than re-ask the same question.
+        missing = _quote_list([anchor.anchor for anchor in anchors[:2]])
+        return f"I could not find anything about {missing} in {sources}."
+
+    if reason == "money_slot_unfilled":
+        # Phrased with the source as an object rather than a subject: "the
+        # indexed documents" is plural and a single filename is not, and no
+        # verb agrees with both.
+        return f"I could not find a price for that in {sources}."
+
+    return f"I could not find that in {sources}."
+
+
+def _source_names(contexts: Sequence[ScoredChunk]) -> str:
+    """Name the documents searched, so a wrong upload is obvious immediately."""
+    seen: list[str] = []
+    for scored in contexts:
+        title = (scored.chunk.title or "").strip() or Path(scored.chunk.source).name
+        if title and title not in seen:
+            seen.append(title)
+    if not seen:
+        return "the indexed documents"
+    if len(seen) == 1:
+        return seen[0]
+    if len(seen) == 2:
+        return f"{seen[0]} or {seen[1]}"
+    # Past two, naming them is noise rather than information - the reader cannot
+    # scan five titles mid-sentence, and the useful signal was the missing term.
+    return "the indexed documents"
+
+
+def _quote_list(items: Sequence[str]) -> str:
+    quoted = [f'"{item}"' for item in items]
+    if len(quoted) == 1:
+        return quoted[0]
+    return " or ".join(quoted)
 
 
 def should_abstain(top_score: float, settings: Settings) -> bool:

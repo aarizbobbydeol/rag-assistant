@@ -178,6 +178,24 @@ def _identifier_occurrences(text: str) -> Iterable[tuple[str, str, int]]:
         yield _canonical_prefix(match.group(1)), match.group(2), match.start()
 
 
+def _question_identifier_spans(question: str) -> dict[tuple[str, str], str]:
+    """Map each identifier to the text the question actually used.
+
+    Attestation is case-folded, but a refusal that says "sev-4" when the reader
+    wrote "SEV-4" looks like it misread them. Quote them back to themselves.
+    """
+    spans: dict[tuple[str, str], str] = {}
+    for match in _IDENT.finditer(question):
+        spans.setdefault(
+            (_canonical_prefix(match.group(1)), match.group(2)), match.group(0)
+        )
+    for match in _LOOSE.finditer(question):
+        spans.setdefault(
+            (_canonical_prefix(match.group(1)), match.group(2)), match.group(0)
+        )
+    return spans
+
+
 def build_anchor_index(texts: Sequence[str]) -> AnchorIndex:
     """Index the anchors the corpus positively attests."""
     identifiers: set[tuple[str, str]] = set()
@@ -364,9 +382,11 @@ def missing_anchors(
     enabled = set(detectors)
 
     if "identifier" in enabled:
+        spans = _question_identifier_spans(question)
         for prefix, digits in _question_identifiers(question, index):
             if (prefix, digits) not in index.identifiers:
-                misses.append(AnchorMiss("identifier", f"{prefix}-{digits}"))
+                spelled = spans.get((prefix, digits), f"{prefix}-{digits}")
+                misses.append(AnchorMiss("identifier", spelled))
 
     if "name_phrase" in enabled:
         misses.extend(_name_phrase_misses(question, index))
