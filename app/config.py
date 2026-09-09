@@ -140,7 +140,7 @@ class Settings(BaseSettings):
         ),
     )
     anchor_detectors: list[str] = Field(
-        default_factory=lambda: ["identifier", "name_phrase", "orphan_span"],
+        default_factory=lambda: ["identifier", "name_phrase", "orphan_span", "code_identifier"],
         description="Which anchor detectors are active. Dropping one only loosens the guard.",
     )
     anchor_min_orphan_span: int = Field(

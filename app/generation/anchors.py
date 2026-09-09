@@ -35,6 +35,7 @@ __all__ = [
     "SCAFFOLD_TERMS",
     "build_anchor_index",
     "chunk_vocab",
+    "code_tokens",
     "missing_anchors",
 ]
 
@@ -109,6 +110,39 @@ _CAPS_FAMILY = re.compile(r"\b([A-Z]{2,12}) (\d{1,5}(?:\.\d{1,5})?)\b")
 # very first line.
 _PREFIX_ALIASES = {"version": "v", "ver": "v", "rev": "v", "revision": "v"}
 
+# Software documentation names things in code, not in prose, and the other two
+# detectors cannot see those names: `name_phrase` keys on capitalised multi-word
+# runs and stands down when casing carries no signal, which for code is always;
+# `identifier` needs a digit. So a question inventing `@app.dependency` or
+# `anyio_backend` passes every check, because its ordinary words all exist
+# somewhere in 673 chunks of documentation.
+#
+# These shapes are chosen because prose never produces them by accident. Each
+# requires either a separator inside a word or a capital inside one, which is
+# what keeps "e.g." and an ordinary sentence out.
+_CODE_SHAPES = (
+    # @decorator, optionally dotted: @app.get, @pytest.fixture
+    re.compile(r"@[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*"),
+    # --cli-flag
+    re.compile(r"--[a-z][a-z0-9]*(?:-[a-z0-9]+)+"),
+    # snake_case and SCREAMING_SNAKE_CASE
+    re.compile(r"\b[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+\b"),
+    # CamelCase with at least two humps: UploadFile, CORSMiddleware, APIRouter
+    re.compile(r"\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*){1,4}\b|\b[A-Z]{2,}[a-z][A-Za-z0-9]*\b"),
+)
+
+# A bare dotted path is the one shape prose produces unaided - people write
+# "app.mount" mid-sentence to mean mounting, without quoting an API. On the
+# question side it therefore counts only inside code font, where the writer is
+# naming something exactly. Measured: without that restriction the detector
+# refuses two answerable questions about mounting, because the FastAPI docs
+# explain it in prose and keep the code in separate files, so the literal
+# string never appears in the corpus at all.
+_DOTTED_PATH = re.compile(r"\b[A-Za-z][A-Za-z0-9]{1,}(?:\.[A-Za-z][A-Za-z0-9]{1,}){1,3}\b")
+
+# Written in code font, which is the writer telling us this is an identifier.
+_BACKTICKED = re.compile(r"`([^`\n]{2,60})`")
+
 _SUBTOKEN = re.compile(r"[_\-]")
 _WORD = re.compile(r"[A-Za-z0-9_]+")
 
@@ -136,6 +170,7 @@ class AnchorIndex:
     families: frozenset[str] = frozenset()
     bigrams: frozenset[tuple[str, str]] = frozenset()
     df: dict[str, int] = field(default_factory=dict)
+    code_tokens: frozenset[str] = frozenset()
     n_chunks: int = 0
 
 
@@ -154,6 +189,42 @@ def chunk_vocab(text: str) -> set[str]:
             if len(part) > 2:
                 vocab.add(stem(part))
     return vocab
+
+
+def code_tokens(text: str) -> set[str]:
+    """Identifier-shaped strings in ``text``, case-folded.
+
+    Backticked spans are taken whole as well as scanned, because a writer who
+    reaches for code font is naming something exactly, and the span may contain
+    call syntax the shape patterns would otherwise split apart.
+    """
+    found: set[str] = set()
+    for match in _BACKTICKED.finditer(text):
+        span = match.group(1).strip()
+        if 2 < len(span) <= 60:
+            found.add(span.lower())
+            for token in _DOTTED_PATH.findall(span):
+                if len(token) > 2:
+                    found.add(token.lower())
+    for pattern in _CODE_SHAPES:
+        for token in pattern.findall(text):
+            if len(token) > 2:
+                found.add(token.lower())
+    return found
+
+
+def corpus_code_tokens(text: str) -> set[str]:
+    """Every identifier the corpus writes, including bare dotted paths.
+
+    The corpus side is deliberately more generous than the question side: a
+    document mentioning ``app.mount`` in prose still attests it, even though the
+    same shape in a question is not enough on its own to refuse.
+    """
+    found = code_tokens(text)
+    for token in _DOTTED_PATH.findall(text):
+        if len(token) > 2:
+            found.add(token.lower())
+    return found
 
 
 def _clause_left(text: str, start: int) -> str:
@@ -202,6 +273,7 @@ def build_anchor_index(texts: Sequence[str]) -> AnchorIndex:
     families: set[str] = set()
     bigrams: set[tuple[str, str]] = set()
     df: Counter[str] = Counter()
+    corpus_code: set[str] = set()
 
     # Families are learned corpus-wide first: a family written glued in one
     # chunk has to license the spaced form in every other chunk, not only in
@@ -232,12 +304,14 @@ def build_anchor_index(texts: Sequence[str]) -> AnchorIndex:
         stems = [stem(t) for t in tokenize(text)]
         bigrams.update(zip(stems, stems[1:], strict=False))
         df.update(chunk_vocab(text))
+        corpus_code.update(corpus_code_tokens(text))
 
     return AnchorIndex(
         identifiers=frozenset(identifiers),
         families=frozenset(families),
         bigrams=frozenset(bigrams),
         df=dict(df),
+        code_tokens=frozenset(corpus_code),
         n_chunks=len(texts),
     )
 
@@ -366,12 +440,33 @@ def _orphan_span_misses(
     return misses
 
 
+def _code_identifier_misses(question: str, index: AnchorIndex) -> list[AnchorMiss]:
+    """Fire on an identifier-shaped term the corpus never writes.
+
+    Matching is on the literal string rather than stems: `response_model` and
+    `response_models` are different names in code, and folding them would be the
+    same mistake as treating SEV-3 and SEV-4 as one thing.
+
+    A token also counts as attested when the corpus contains it as a substring -
+    a question asking about ``jwt.decode()`` is answered by documentation that
+    writes ``jwt.decode``, and demanding an exact match would refuse it.
+    """
+    if not index.code_tokens:
+        return []
+    misses: list[AnchorMiss] = []
+    for token in sorted(code_tokens(question)):
+        if any(token in attested for attested in index.code_tokens):
+            continue
+        misses.append(AnchorMiss("code_identifier", token))
+    return misses
+
+
 def missing_anchors(
     question: str,
     chunk_vocabs: Sequence[set[str]],
     index: AnchorIndex,
     *,
-    detectors: Sequence[str] = ("identifier", "name_phrase", "orphan_span"),
+    detectors: Sequence[str] = ("identifier", "name_phrase", "orphan_span", "code_identifier"),
     min_span: int = 2,
 ) -> list[AnchorMiss]:
     """Anchors the question names that the corpus does not positively attest."""
@@ -393,5 +488,8 @@ def missing_anchors(
 
     if "orphan_span" in enabled:
         misses.extend(_orphan_span_misses(question, chunk_vocabs, index, min_span))
+
+    if "code_identifier" in enabled:
+        misses.extend(_code_identifier_misses(question, index))
 
     return misses

@@ -249,3 +249,73 @@ def test_version_prefix_aliases_fold_together(index, vocabs):
     corpus = build_anchor_index(["Atlas API. Version 2.8 | Effective 1 March 2025"])
     assert ("v", "2.8") in corpus.identifiers
     assert not missing_anchors("When did v2.8 take effect?", vocabs, corpus)
+
+
+# --------------------------------------------------------------------------- #
+# code identifiers - the vocabulary of a software-docs corpus
+# --------------------------------------------------------------------------- #
+DOCS = (
+    "Use `UploadFile` for large uploads. Register a dependency with `Depends`. "
+    "Run `uvicorn main:app --reload`. The `response_model` argument takes priority. "
+    "You can use app.mount to add a sub-application. Traffic must use TLS 1.2."
+)
+
+
+@pytest.fixture(scope="module")
+def code_index():
+    return build_anchor_index([DOCS])
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "How do I register a dependency with @app.dependency()?",   # decorator
+        "What does the `anyio_backend` fixture return?",            # snake_case
+        "What is `ACCESS_TOKEN_EXPIRE_MINUTES` set to?",            # SCREAMING_SNAKE
+        "What is the default for --timeout-keep-alive?",            # cli flag
+        "When does `jwt.decode()` raise?",                          # dotted, in code font
+    ],
+)
+def test_invented_code_identifiers_fire(question, code_index):
+    """These are the names a software corpus is asked about and never contains.
+
+    The other detectors are blind to them: name_phrase keys on capitalisation
+    and stands down when casing carries no signal, which for code is always,
+    and identifier requires a digit.
+    """
+    misses = missing_anchors(question, [chunk_vocab(DOCS)], code_index)
+    assert any(m.detector == "code_identifier" for m in misses), question
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "How do I use `UploadFile` for a large upload?",
+        "What does the `response_model` argument do?",
+        "How do I declare a dependency with `Depends`?",
+    ],
+)
+def test_attested_code_identifiers_do_not_fire(question, code_index):
+    assert not missing_anchors(question, [chunk_vocab(DOCS)], code_index)
+
+
+def test_a_dotted_path_in_plain_prose_is_not_an_anchor(code_index):
+    """People write "app.mount" mid-sentence to mean mounting, not to cite an API.
+
+    Documentation that explains mounting in prose while keeping the code in
+    separate files never contains the literal string, so treating a bare dotted
+    path as a claim refuses questions the docs answer.
+    """
+    question = "When I mount a sub-application with app.mount(), what happens to /docs?"
+    assert not [m for m in missing_anchors(question, [chunk_vocab(DOCS)], code_index)
+                if m.detector == "code_identifier"]
+
+
+def test_the_detector_stays_silent_on_a_prose_corpus(index, vocabs):
+    """A policy corpus has no code, so this detector must never fire on one."""
+    for question in (
+        "How much notice is required before taking leave?",
+        "Who approves an expense above five thousand dollars?",
+    ):
+        assert not [m for m in missing_anchors(question, vocabs, index)
+                    if m.detector == "code_identifier"]
