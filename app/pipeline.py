@@ -164,8 +164,11 @@ class RagPipeline:
             except (UnsupportedFileType, DocumentLoadError) as exc:
                 skipped.append(f"{filename}: {exc.message}")
                 continue
-            # Keep the original bytes so an index rebuild does not need the client.
-            (upload_dir / Path(filename).name).write_bytes(payload)
+            if self.settings.store_uploads:
+                # Only when an operator has asked for it: keeping the original
+                # bytes makes an index rebuild possible without the client, at
+                # the cost of holding someone's document on disk indefinitely.
+                (upload_dir / Path(filename).name).write_bytes(payload)
             docs.append(doc)
 
         return self._index_documents(docs, skipped, started)
@@ -410,7 +413,11 @@ class RagPipeline:
             )
         logger.info(
             "question_abstained",
-            extra={"trace_id": trace_id, "reason": reason, "question": truncate(question, 120)},
+            extra={
+                "trace_id": trace_id,
+                "reason": reason,
+                **self._question_field(question),
+            },
         )
         return AnswerResult(
             question=question,
@@ -424,6 +431,18 @@ class RagPipeline:
             session_id=session_id,
             trace_id=trace_id,
         )
+
+    def _question_field(self, question: str) -> dict[str, object]:
+        """What a log line may say about the question.
+
+        Logs are shipped, aggregated and retained far longer than a request
+        lives, so the question text - which is user content - stays out of them
+        unless an operator opts in. The length is kept because it is useful for
+        debugging and reveals nothing.
+        """
+        if self.settings.log_question_text:
+            return {"question": truncate(question, 120)}
+        return {"question_chars": len(question)}
 
     def _record_usage(self, usage: Usage) -> None:
         if usage.prompt_tokens:

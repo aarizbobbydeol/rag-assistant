@@ -164,6 +164,28 @@ class Settings(BaseSettings):
     )
     abstain_message: str = "I could not find enough support for that in the indexed documents."
 
+    # -- privacy -------------------------------------------------------- #
+    # Defaults chosen so that running this service stores nothing about the
+    # people using it. Both can be turned on deliberately; neither turns itself
+    # on because a convenience needed it.
+    store_uploads: bool = Field(
+        False,
+        description=(
+            "Write uploaded file bytes to disk. Off by default: the text is "
+            "already in the index, and keeping the original means holding "
+            "someone's document until an operator deletes it. Turning this on "
+            "lets the index be rebuilt without the client re-uploading."
+        ),
+    )
+    log_question_text: bool = Field(
+        False,
+        description=(
+            "Include the question itself in logs. Off by default, because a "
+            "question is user content and logs travel further than the service "
+            "does. Trace ids still tie a request together without it."
+        ),
+    )
+
     # -- ops ------------------------------------------------------------ #
     metrics_enabled: bool = True
     max_upload_mb: int = 32

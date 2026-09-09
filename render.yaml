@@ -33,5 +33,15 @@ services:
         value: "false"
       - key: RAG_AUTH_ALLOW_REGISTRATION
         value: "false"
+      # Nothing a visitor uploads or asks outlives their session. The index is
+      # rebuilt from the sample corpus on every start (a few hundred ms), so an
+      # uploaded document lives in memory and is gone when the instance
+      # restarts - which on the free tier is after 15 minutes of no traffic.
+      - key: RAG_PERSIST_INDEX
+        value: "false"
+      - key: RAG_STORE_UPLOADS
+        value: "false"
+      - key: RAG_LOG_QUESTION_TEXT
+        value: "false"
       - key: RAG_AUTH_SECRET
         generateValue: true
