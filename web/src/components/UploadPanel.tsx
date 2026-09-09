@@ -47,6 +47,19 @@ function rejectionReason(file: File): string | null {
   return null;
 }
 
+/** Turn the server's skip list into something the user can act on.
+ *
+ * Entries arrive as "report.docx: Unsupported file type: .docx". The filename
+ * prefix is noise next to the row it is already displayed on, so it is trimmed
+ * and the reason kept.
+ */
+function describeSkip(skipped: string[], filename: string): string {
+  const mine = skipped.find((entry) => entry.startsWith(`${filename}:`)) ?? skipped[0];
+  if (!mine) return 'No text extracted.';
+  const reason = mine.slice(mine.indexOf(':') + 1).trim();
+  return reason ? `${reason}.` : mine;
+}
+
 export function UploadPanel({ onIngested }: UploadPanelProps): ReactElement {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -90,10 +103,14 @@ export function UploadPanel({ onIngested }: UploadPanelProps): ReactElement {
           });
           const chunks = response.documents.reduce((total, doc) => total + doc.chunks, 0);
           if (response.documents.length === 0) {
+            // The server says exactly why - "Unsupported file type: .docx", "No
+            // extractable text" - and it is prefixed with the filename. Showing
+            // a generic "skipped" instead leaves the user with nothing to act
+            // on, which is the whole difference between a dead end and a fix.
             patch(item.id, {
               status: 'error',
               percent: 100,
-              error: response.skipped.length > 0 ? 'Skipped by the ingester.' : 'No text extracted.',
+              error: describeSkip(response.skipped, file.name),
             });
           } else {
             patch(item.id, { status: 'done', percent: 100, chunks, error: null });

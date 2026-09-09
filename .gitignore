@@ -12,3 +12,5 @@ web/dist/
 eval-results/
 build/
 *.egg-info/
+# Third-party docs corpus, fetched by scripts/fetch_real_corpus.sh
+data/corpus-real/
