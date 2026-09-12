@@ -433,3 +433,32 @@ def test_every_backend_satisfies_the_interface() -> None:
         assert isinstance(client.provider, str) and client.provider
         assert isinstance(client.model, str) and client.model
         assert isinstance(client.available, bool)
+
+
+def test_extractive_answerer_never_quotes_a_heading():
+    """A heading is the table of contents, not an answer.
+
+    It is short and dense with exactly the words the question used, so
+    IDF-weighted coverage ranks it above the paragraph that actually answers.
+    On technical documentation - mostly headings, fences and tables - that is
+    how "## Deploy the Container Image" became an answer about Kubernetes.
+    """
+    from app.generation.llm import ExtractiveLLM
+    from app.generation.prompts import build_answer_messages
+    from app.models import Chunk, ScoredChunk
+
+    body = (
+        "## Deploy the Container Image\n"
+        "A container image is deployed by pushing it to a registry and "
+        "pointing your orchestrator at the resulting tag.\n"
+    )
+    chunk = Chunk(chunk_id="c1", doc_id="d1", source="deploy.md", title="Deploy",
+                  text=body, ordinal=0)
+    contexts = [ScoredChunk(chunk=chunk, score=0.9, rank=1)]
+
+    messages = build_answer_messages("How is the container image deployed?", contexts, [], 4000)
+    answer = ExtractiveLLM().complete(messages).text
+
+    assert "##" not in answer
+    assert "Deploy the Container Image" not in answer
+    assert "registry" in answer

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import math
+import re
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
@@ -259,6 +260,26 @@ _STOPWORDS = frozenset(
 
 # Below this fraction of the question's (idf-weighted) content words a sentence
 # is not an answer, it is a topically adjacent sentence - abstain instead.
+# Structure, not prose. A markdown heading is the most dangerous of these: it is
+# short and dense with exactly the words the question used, so IDF-weighted
+# coverage ranks it above the paragraph that actually answers - and "## Deploy
+# the Container Image" asserts nothing at all. Quoting one is the extractive
+# equivalent of answering with the table of contents.
+#
+# check_groundedness already draws this line for answers ("Here is what I
+# found:" is framing, not a claim); the answerer never did, and on technical
+# documentation - which is mostly headings, fences and tables - that showed.
+_NON_ASSERTIVE = re.compile(
+    r"""^\s*(?:
+        \#{1,6}\s                 # markdown heading
+      | \{\s*\#[\w-]+\s*\}        # trailing {#anchor} left by a heading
+      | ```                       # code fence marker
+      | \|?\s*[:-]{3,}\s*\|       # table separator row
+      | <[^>]+>\s*$               # a lone html tag
+    )""",
+    re.VERBOSE,
+)
+
 _MIN_OVERLAP = 0.28
 # Extra sentences must be nearly as good as the best one to earn a place.
 _RELATIVE_FLOOR = 0.6
@@ -325,6 +346,8 @@ class ExtractiveLLM(LLMClient):
         scored: list[tuple[float, int, int, str, int]] = []
         for position, (marker, body) in enumerate(passages):
             for index, sentence in enumerate(split_sentences(body)):
+                if _NON_ASSERTIVE.match(sentence):
+                    continue
                 terms = set(stem_tokens(sentence))
                 if not terms:
                     continue
