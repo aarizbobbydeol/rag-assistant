@@ -46,7 +46,13 @@ logger = get_logger(__name__)
 # every proxy in front of an inference server emits under load.
 RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 _BACKOFF_BASE_S = 0.5
+#: Ceiling on blind exponential growth, where the client is only guessing.
 _BACKOFF_CAP_S = 8.0
+#: Ceiling on an explicit ``Retry-After``, which is the server telling us when
+#: its window reopens. Higher than the blind cap because it is information
+#: rather than guesswork, but still bounded so a hostile header cannot hang a
+#: request indefinitely.
+_RETRY_AFTER_CAP_S = 65.0
 
 
 def _sleep(seconds: float) -> None:
@@ -59,6 +65,44 @@ def _record(usage: Usage) -> None:
     LLM_TOKENS.labels(kind="completion", model=usage.model).inc(usage.completion_tokens)
     if usage.estimated_cost_usd:
         LLM_COST.labels(model=usage.model).inc(usage.estimated_cost_usd)
+
+
+# Providers advertise when a rate-limit window reopens in two different ways.
+# `Retry-After` is the standard one; Groq and several other OpenAI-compatible
+# endpoints never send it and use `x-ratelimit-reset-*` durations instead
+# ("6.617s", "7h58m4.8s"). Reading only the standard header means every retry
+# falls back to blind exponential backoff and lands before the window reopens.
+# "ms" precedes "m" in the alternation deliberately: matched the other way,
+# "500ms" reads as 500 minutes and the client sleeps for eight hours.
+_DURATION_PART = re.compile(r"(\d+(?:\.\d+)?)\s*(ms|h|m|s)")
+
+
+def _parse_duration(raw: str) -> float | None:
+    """Seconds from "30", "6.617s" or "7h58m4.8s"; None if unparseable."""
+    text = raw.strip().lower()
+    if not text:
+        return None
+    with contextlib.suppress(ValueError):
+        return float(text)
+    scale = {"h": 3600.0, "m": 60.0, "s": 1.0, "ms": 0.001}
+    parts = _DURATION_PART.findall(text)
+    if not parts:
+        return None
+    return sum(float(value) * scale[unit] for value, unit in parts)
+
+
+def _reset_after(headers: Any) -> float | None:
+    """How long the server says to wait, by whichever convention it uses.
+
+    The token window is checked before the request window because a
+    tokens-per-minute budget is what a document-heavy prompt actually exhausts,
+    and its reset is usually seconds away while the request reset can be hours.
+    """
+    for name in ("Retry-After", "x-ratelimit-reset-tokens", "x-ratelimit-reset-requests"):
+        seconds = _parse_duration(headers.get(name, "") or "")
+        if seconds is not None and seconds >= 0:
+            return seconds
+    return None
 
 
 class LLMClient(ABC):
@@ -193,14 +237,24 @@ class OpenAICompatibleLLM(LLMClient):
     def _backoff(self, attempt: int, response: httpx.Response | None = None) -> float:
         """Exponential backoff, but honour `Retry-After` when the server sets it.
 
+        The two ceilings are deliberately different. ``_BACKOFF_CAP_S`` bounds
+        *blind* exponential growth, where the client is guessing. ``Retry-After``
+        is not a guess - it is the server saying when its window reopens - so
+        clamping it to the guessing ceiling both ignores the instruction and
+        guarantees the retry lands too early. A provider enforcing a
+        tokens-per-minute budget routinely asks for longer than eight seconds,
+        and waiting eight burns an attempt to be told the same thing again.
+
         Deliberately jitter-free: two identical runs must issue the same calls
         in the same order for the evaluation harness to be reproducible.
         """
         delay = min(_BACKOFF_CAP_S, _BACKOFF_BASE_S * (2**attempt))
-        if response is not None:
-            raw = response.headers.get("Retry-After", "")
-            with contextlib.suppress(ValueError):
-                delay = max(delay, min(_BACKOFF_CAP_S, float(raw)))
+        if response is None:
+            return delay
+
+        advertised = _reset_after(response.headers)
+        if advertised is not None:
+            delay = max(delay, min(_RETRY_AFTER_CAP_S, advertised))
         return delay
 
     # -- response ----------------------------------------------------------- #

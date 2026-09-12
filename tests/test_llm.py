@@ -462,3 +462,73 @@ def test_extractive_answerer_never_quotes_a_heading():
     assert "##" not in answer
     assert "Deploy the Container Image" not in answer
     assert "registry" in answer
+
+
+def test_rate_limit_reset_headers_are_parsed():
+    """Providers advertise the reopening time in two different formats.
+
+    Groq never sends Retry-After; it sends "x-ratelimit-reset-tokens: 6.617s".
+    Reading only the standard header sends every retry back to blind backoff,
+    which lands before the window reopens - which is what made a 72-question
+    evaluation fail.
+    """
+    from app.generation.llm import _parse_duration, _reset_after
+
+    assert _parse_duration("30") == 30.0
+    assert _parse_duration("6.617s") == pytest.approx(6.617)
+    assert _parse_duration("1m30s") == 90.0
+    # "ms" must not read as minutes, or the client sleeps for eight hours.
+    assert _parse_duration("500ms") == pytest.approx(0.5)
+    assert _parse_duration("garbage") is None
+    assert _parse_duration("") is None
+
+    # The token window resets in seconds; the request window can be hours away,
+    # so the token one has to win.
+    headers = {"x-ratelimit-reset-tokens": "6.617s", "x-ratelimit-reset-requests": "7h58m4.8s"}
+    assert _reset_after(headers) == pytest.approx(6.617)
+    assert _reset_after({}) is None
+
+
+def test_retry_after_is_honoured_beyond_the_blind_backoff_cap():
+    """A server saying "wait 30s" is information, not a guess to be clamped.
+
+    Clamping Retry-After to the exponential-backoff ceiling both ignores the
+    instruction and guarantees the retry lands before the window reopens, so the
+    attempt is spent being told the same thing again. That is what made a
+    72-question evaluation fail against a provider with a per-minute token
+    budget.
+    """
+    import httpx
+
+    from app.config import Settings
+    from app.generation.llm import _BACKOFF_CAP_S, OpenAICompatibleLLM
+
+    client = OpenAICompatibleLLM(Settings(llm_api_key="k"))
+    response = httpx.Response(429, headers={"Retry-After": "30"})
+
+    assert client._backoff(0, response) == 30.0
+    assert client._backoff(0, response) > _BACKOFF_CAP_S
+
+
+def test_retry_after_is_still_bounded():
+    """A hostile or broken header must not hang the request indefinitely."""
+    import httpx
+
+    from app.config import Settings
+    from app.generation.llm import _RETRY_AFTER_CAP_S, OpenAICompatibleLLM
+
+    client = OpenAICompatibleLLM(Settings(llm_api_key="k"))
+    huge = httpx.Response(429, headers={"Retry-After": "86400"})
+    assert client._backoff(0, huge) == _RETRY_AFTER_CAP_S
+
+
+def test_blind_backoff_is_unchanged_without_a_header():
+    import httpx
+
+    from app.config import Settings
+    from app.generation.llm import _BACKOFF_CAP_S, OpenAICompatibleLLM
+
+    client = OpenAICompatibleLLM(Settings(llm_api_key="k"))
+    plain = httpx.Response(429)
+    assert client._backoff(0, plain) == 0.5
+    assert client._backoff(10, plain) == _BACKOFF_CAP_S
